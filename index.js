@@ -1,5 +1,6 @@
 const express = require('express');
 const app = express();
+const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
 const port = process.env.PORT || 5000;
@@ -12,6 +13,24 @@ app.use(express.json());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.tmkhisl.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
+
+// verify jwt code 
+function verifyJWT(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, decoded) {
+        if (err) {
+            return res.status(401).send({ message: 'forbidden access' })
+        }
+        req.decoded = decoded;
+        next();
+    });
+}
+
+
 
 async function run() {
     const serviceCollction = client.db('geniusCar').collection('services');
@@ -33,8 +52,23 @@ async function run() {
             res.send(services);
         })
 
+        // json web token (jwt)
+        app.post('/jwt', (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '10h' })
+            res.send({ token });  //send data object hisabe
+        })
+
+
         // orders api 
-        app.get('/orders', async (req, res) => {
+        app.get('/orders', verifyJWT, async (req, res) => {
+            const decoded = req.decoded;
+            console.log('inside orders api', decoded);
+
+            if (decoded.email !== req.query.email) {
+                res.status(403).send({ message: 'unauthorized accedd' })
+            }
+
             let query = {};
             if (req.query.email) {
                 query = {
@@ -87,7 +121,7 @@ run().catch(err => console.log(err));
 
 
 app.get('/', (req, res) => {
-    res.send('<h1>Node Server in Running</h1>');
+    res.send('Genius Node Server is Running!!!');
 })
 
 app.listen(port, () => {
